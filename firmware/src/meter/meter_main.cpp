@@ -137,7 +137,6 @@ extern const lv_font_t font_inter_72;
 #define BATT_W 26
 #define BATT_H 13
 #define BATT_PAD 2
-#define BATT_TEXT_W 40
 
 // Warn when the wallet is nearly gone or the limit is nearly consumed.
 #define ALARM_WALLET_PCT 5      // wallet remaining at or below this
@@ -469,9 +468,20 @@ static void battery_build(lv_obj_t *parent) {
     lv_obj_set_style_border_width(batt_nub, 0, 0);
     lv_obj_clear_flag(batt_nub, LV_OBJ_FLAG_SCROLLABLE);
 
+    // Deliberately no explicit width. Giving a label a width smaller than its
+    // text makes LVGL wrap it, which split "100%" across two lines. Auto-sized
+    // it never wraps; battery_layout() below then positions the icon from the
+    // width the text actually needs, so the two stay tight at "9%" and "100%".
     lbl_batt = make_label(parent, &font_inter_14, COL_TEXT, "--%");
-    lv_obj_set_width(lbl_batt, BATT_TEXT_W);
-    lv_obj_set_style_text_align(lbl_batt, LV_TEXT_ALIGN_RIGHT, 0);
+}
+
+// Pack the icon against the percentage using its REAL width. Called after every
+// text change, and once at build time.
+static void battery_layout() {
+    lv_obj_update_layout(lbl_batt);          // force the new width to take
+    const int32_t tw = lv_obj_get_width(lbl_batt);
+    lv_obj_align(batt_nub, LV_ALIGN_TOP_RIGHT, -(MARGIN + tw + 2), 24);
+    lv_obj_align(batt_body, LV_ALIGN_TOP_RIGHT, -(MARGIN + tw + 6), 20);
 }
 
 // PMU reads are cheap but pointless at 10Hz, so throttle them. Hides the whole
@@ -502,6 +512,7 @@ static void battery_tick() {
     char buf[8];
     snprintf(buf, sizeof(buf), "%d%%", pct);
     lv_label_set_text(lbl_batt, buf);
+    battery_layout();
 
     const int inner_max = BATT_W - 2 * BATT_PAD - 4;
     lv_obj_set_width(batt_fill, (inner_max * pct) / 100);
@@ -519,18 +530,17 @@ static void ui_build() {
     lv_obj_set_style_text_letter_space(lbl_brand, 1, 0);
     lv_obj_align(lbl_brand, LV_ALIGN_TOP_LEFT, MARGIN, 18);
 
-    // 14px, not 16: with three items on one 368px row the tagline has to give a
-    // little width so it cannot meet either neighbour.
-    lv_obj_t *lbl_tag = make_label(scr, &font_inter_14, COL_DIM, "OpenRouter tracking");
-    lv_obj_align(lbl_tag, LV_ALIGN_TOP_MID, 0, 23);
-
-    // Right-hand group, laid out from the right edge inwards. The percentage
-    // occupies a fixed width so the icon never shifts as the reading changes.
+    // The tagline was dropped from this row: three items do not fit 368px, and
+    // it met both the brand and the battery. The masthead is now brand + battery
+    // only.
+    //
+    // Right-hand group, laid out from the right edge inwards and packed tight:
+    // the percentage reserves a fixed width so the icon never shifts between
+    // "9%" and "100%", then the terminal nub, then the body.
     lbl_batt = nullptr;  // created by battery_build()
     battery_build(scr);
     lv_obj_align(lbl_batt, LV_ALIGN_TOP_RIGHT, -MARGIN, 20);
-    lv_obj_align(batt_nub, LV_ALIGN_TOP_RIGHT, -(MARGIN + BATT_TEXT_W + 5), 24);
-    lv_obj_align(batt_body, LV_ALIGN_TOP_RIGHT, -(MARGIN + BATT_TEXT_W + 8 + BATT_W), 20);
+    battery_layout();
     lv_obj_add_flag(batt_body, LV_OBJ_FLAG_HIDDEN);   // until the PMU is read
     lv_obj_add_flag(batt_fill, LV_OBJ_FLAG_HIDDEN);
     lv_obj_add_flag(batt_nub, LV_OBJ_FLAG_HIDDEN);
