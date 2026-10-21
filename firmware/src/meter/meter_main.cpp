@@ -106,9 +106,12 @@ extern const lv_font_t font_inter_72;
 #define PAIR_WINDOW_MS 300000
 
 // --- BLE contract ----------------------------------------------------------
-#define SERVICE_UUID "4c41555a-4465-7669-6365-000000000001"
-#define RX_CHAR_UUID "4c41555a-4465-7669-6365-000000000002"
-#define REQ_CHAR_UUID "4c41555a-4465-7669-6365-000000000004"
+// Custom GATT namespace, spelled "ORmeterBLE" in hex. Must match the host
+// daemon's SERVICE_UUID / RX_CHAR_UUID / REQ_CHAR_UUID: the daemon WRITES the
+// JSON payload to RX, and this firmware NOTIFIES a refresh request on REQ.
+#define SERVICE_UUID "4f526d65-7465-7242-4c45-000000000001"
+#define RX_CHAR_UUID "4f526d65-7465-7242-4c45-000000000002"
+#define REQ_CHAR_UUID "4f526d65-7465-7242-4c45-000000000004"
 
 #define DEVICE_NAME "ORmeter"     // must fit ~8 chars next to the 128-bit UUID
 #define APPEARANCE_KEYBOARD 0x03C0
@@ -589,7 +592,12 @@ static void ble_init() {
     g_hid = new NimBLEHIDDevice(g_server);
     g_hid->setReportMap((uint8_t *)HID_REPORT_MAP, sizeof(HID_REPORT_MAP));
     g_hid->setManufacturer("ORmeter");
-    g_hid->setPnp(0x01, 0x02E5, 0x0002, 0x0100);
+    // PnP identity: Bluetooth SIG signature, an explicitly reserved vendor id
+    // (0xFFFF means "testing"), and our own product id. The previous 0x02E5 was
+    // Apple's USB vendor id -- borrowed, like the GATT UUIDs, from the reference
+    // firmware. Windows resolves HID by class, so a third-party vendor id buys
+    // nothing and is not ours to claim.
+    g_hid->setPnp(0x01, 0xFFFF, 0x0001, 0x0100);
     g_hid->setHidInfo(0x21, 0x02);
     g_hid->setBatteryLevel(100);
     g_hid->getInputReport(1);

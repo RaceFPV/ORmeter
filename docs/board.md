@@ -274,3 +274,27 @@ Traps that cost time here:
   ("PAIRING MODE" → "AIRING MODE"); use `LV_LABEL_LONG_WRAP`.
 * Keep the first glyph clear of the panel's rounded corner — 16 px of row padding,
   not 6, or the "W" in "Wallet" gets cropped.
+
+## Changing the GATT UUIDs needs a host re-pair
+
+The service and characteristic UUIDs are the wire contract between the daemon and
+the firmware. Both ends are ours, so they can be changed -- but a change takes
+more than a reflash.
+
+Windows caches each bonded device's GATT database. After a firmware change that
+alters the UUIDs, Windows keeps handing the OLD attribute table to every
+connection. The daemon connects fine, then fails with:
+
+    Write failed: Characteristic <new-uuid> was not found!
+
+on a device that is genuinely advertising that UUID. The stale table sits below
+the BLE library, so reconnecting and retrying never clears it. It is even visible
+in the device's record in Windows:
+
+    BTHLEDEVICE\{4C41555A-4465-7669-6365-000000000001}_DEV_VID&0102E5_...
+
+That embedded UUID is the one Windows enumerated the device under when it was
+paired. It does not update until the bond does.
+
+To fix it: remove the device in Windows Settings, clear the bond on the meter by
+holding BOOT for 3 seconds and releasing, then pair again.

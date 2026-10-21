@@ -38,11 +38,15 @@ from bleak.backends.device import BLEDevice
 from bleak.exc import BleakError
 
 # --- GATT contract --------------------------------------------------------
-# These UUIDs are baked into the DEVICE firmware, not into this project, so
-# they are fixed until the firmware is rebuilt. Do not "tidy" them.
-SERVICE_UUID = "4c41555a-4465-7669-6365-000000000001"
-RX_CHAR_UUID = "4c41555a-4465-7669-6365-000000000002"
-REQ_CHAR_UUID = "4c41555a-4465-7669-6365-000000000004"
+# ORmeter's own GATT namespace, spelled "ORmeterBLE" in hex. The display
+# firmware defines the same three values, and the two ends must match exactly:
+# this process WRITES the JSON payload to RX, and the firmware NOTIFIES a
+# refresh request on REQ. Changing them is a coordinated change -- rebuild and
+# reflash the firmware and update this file together, or the two simply stop
+# talking. They are not secret; they are just the wire contract.
+SERVICE_UUID = "4f526d65-7465-7242-4c45-000000000001"
+RX_CHAR_UUID = "4f526d65-7465-7242-4c45-000000000002"
+REQ_CHAR_UUID = "4f526d65-7465-7242-4c45-000000000004"
 
 # The device's ADVERTISED / BONDED name as the firmware reports it today.
 # Windows stores this as the PnP FriendlyName, which is what we filter on.
