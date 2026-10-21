@@ -76,6 +76,10 @@ extern const lv_font_t font_inter_72;
 
 #define PANEL_SELFTEST 0
 
+// Debug: force the first-run prompt even on a device that already has a bond, so
+// the onboarding screen can be checked without clearing the pairing. Left at 0.
+#define FORCE_WELCOME 0
+
 // --- geometry / pins -------------------------------------------------------
 #define LCD_WIDTH 368
 #define LCD_HEIGHT 448
@@ -186,6 +190,13 @@ static lv_obj_t *lbl_batt = nullptr;         // battery percentage
 
 static volatile bool g_have_data = false;
 static bool g_pairing = false;
+
+// Onboarding state. g_welcome is owned by the UI (setup/loop); the two volatile
+// flags are raised from BLE callbacks and consumed in loop(), because calling
+// LVGL from the BLE task is not safe.
+static bool g_welcome = false;                    // showing the first-run prompt
+static volatile bool g_bond_established = false;  // raised by onAuthenticationComplete
+static volatile bool g_data_arrived = false;      // raised by the RX write callback
 static uint32_t g_pairing_until = 0;
 static NimBLECharacteristic *g_req_char = nullptr;
 
@@ -369,12 +380,27 @@ static void format_reset(int minutes, char *out, size_t n) {
 }
 
 // --- pairing ---------------------------------------------------------------
-static void banner(const char *text) {
+static void banner_show(const char *text, bool large) {
+    lv_obj_set_style_text_font(lbl_banner, large ? &font_inter_32 : &font_inter_20, 0);
     lv_obj_clear_flag(lbl_banner, LV_OBJ_FLAG_HIDDEN);
     lv_label_set_text(lbl_banner, text);
 }
 
 static void banner_hide() { lv_obj_add_flag(lbl_banner, LV_OBJ_FLAG_HIDDEN); }
+
+// The dashboard's own widgets, hidden while the first-run prompt is up so the
+// customer is not shown an empty balance and two blank bars.
+static lv_obj_t *const DASHBOARD_WIDGETS[] = {
+    lbl_wallet_cap, lbl_balance, lbl_wallet_sub, bar_wallet,
+    lbl_limit_cap, lbl_limit_amt, lbl_spend_pct, bar_spend,
+};
+static void dashboard_show(bool visible) {
+    for (lv_obj_t *o : DASHBOARD_WIDGETS) {
+        if (o == nullptr) continue;
+        if (visible) lv_obj_clear_flag(o, LV_OBJ_FLAG_HIDDEN);
+        else         lv_obj_add_flag(o, LV_OBJ_FLAG_HIDDEN);
+    }
+}
 
 static void enter_pairing_mode() {
     const int before = NimBLEDevice::getNumBonds();
@@ -384,7 +410,7 @@ static void enter_pairing_mode() {
 
     g_pairing = true;
     g_pairing_until = millis() + PAIR_WINDOW_MS;
-    banner("PAIRING MODE\nlook for \"ORmeter\"");
+    banner_show("PAIRING MODE\nlook for ORmeter", false);
 
     NimBLEDevice::stopAdvertising();
     delay(20);
@@ -417,7 +443,7 @@ static void boot_btn_tick() {
             char b[40];
             if (secs > 0) snprintf(b, sizeof(b), "hold to pair: %d", secs);
             else          snprintf(b, sizeof(b), "release to pair");
-            banner(b);
+            banner_show(b, false);
         }
     } else if (!pressed && was_pressed) {
         const uint32_t held = millis() - press_started;
@@ -678,6 +704,7 @@ class RxCallbacks : public NimBLECharacteristicCallbacks {
         (void)info;
         const std::string v = c->getValue();
         Serial.printf("BLE: rx %u bytes\n", (unsigned)v.size());
+        g_data_arrived = true;
         apply_payload(v.data(), v.size());
     }
 };
@@ -706,7 +733,8 @@ class ServerCallbacks : public NimBLEServerCallbacks {
     void onAuthenticationComplete(NimBLEConnInfo &info) override {
         Serial.printf("BLE: auth complete bonded=%d encrypted=%d\n",
                       info.isBonded() ? 1 : 0, info.isEncrypted() ? 1 : 0);
-        if (info.isBonded()) exit_pairing_mode("bond established");
+        // No LVGL here: this runs on the BLE task. loop() does the UI work.
+        if (info.isBonded()) g_bond_established = true;
     }
 };
 
@@ -830,6 +858,16 @@ void setup() {
         delay(10);
     }
 
+    // First-run state. A device with no bonds has never been paired, so prompt
+    // for it instead of showing an empty dashboard. Self-clearing: once a bond
+    // exists this branch never runs again, and no flag has to be stored.
+    if (FORCE_WELCOME || NimBLEDevice::getNumBonds() == 0) {
+        g_welcome = true;
+        dashboard_show(false);
+        banner_show("Pair me over Bluetooth\n\nAdd a device called ORmeter", true);
+        Serial.println("First run: no bonds, showing the pair-me prompt");
+    }
+
     Serial.printf("Dashboard ready (%dx%d), waiting for data on BLE...\n", LCD_WIDTH, LCD_HEIGHT);
 }
 
@@ -842,6 +880,26 @@ void loop() {
     if (g_need_advertise && (int32_t)(millis() - g_advertise_at) >= 0) {
         g_need_advertise = false;
         NimBLEDevice::startAdvertising();
+    }
+
+    if (g_bond_established) {
+        g_bond_established = false;
+        exit_pairing_mode("bond established");
+        if (g_welcome) {
+            g_welcome = false;
+            dashboard_show(true);
+        }
+        banner_show("Paired\n\nwaiting for data", false);
+        Serial.println("Onboarding: paired, waiting for the first payload");
+    }
+
+    if (g_data_arrived) {
+        g_data_arrived = false;
+        if (g_welcome) {
+            g_welcome = false;
+            dashboard_show(true);
+            banner_hide();
+        }
     }
 
     if (g_pairing && (int32_t)(millis() - g_pairing_until) >= 0) {
