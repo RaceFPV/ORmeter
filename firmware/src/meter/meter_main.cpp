@@ -898,7 +898,16 @@ void loop() {
         if (g_welcome) {
             g_welcome = false;
             dashboard_show(true);
+        }
+        // Hide the banner whenever data is flowing, NOT only when the welcome was
+        // up. The "Paired / waiting for data" prompt comes from the bond event and
+        // is unrelated to g_welcome, so gating this on g_welcome left that prompt
+        // stuck on a device that was paired before this feature existed -- banner
+        // permanently over the dashboard while data arrived normally.
+        // Guarded on g_pairing so an active pairing session keeps its own banner.
+        if (!g_pairing && !lv_obj_has_flag(lbl_banner, LV_OBJ_FLAG_HIDDEN)) {
             banner_hide();
+            Serial.println("Onboarding: banner cleared (data flowing)");
         }
     }
 
