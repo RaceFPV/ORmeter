@@ -16,15 +16,11 @@ OpenRouter API  <---  daemon (Windows)  --- BLE --->  ORmeter (ESP32-S3)
 
 ## What you need
 
-- A **Waveshare ESP32-S3-Touch-AMOLED-1.8** — 368×448 AMOLED, FT3168 touch,
-  AXP2101 PMU, 16 MB flash.
-- A native **Windows** machine with **Python 3.10+**. WSL cannot be the host: the
-  BLE link goes through WinRT, and WSL2 ships no Bluetooth stack at all.
-- An **OpenRouter API key** — and set a **spend limit on that key**. The meter's
-  monthly-limit row has nothing to measure without one.
+- A **Waveshare ESP32-S3-Touch-AMOLED-1.8**
+- A native **Windows** machine with Python 3.10+
+- An **OpenRouter API key**, with a spend limit set on it
 
-This project supports exactly that one board. It does not attempt to support
-others.
+This project supports exactly that one board.
 
 ## 1. Flash the device
 
