@@ -12,13 +12,14 @@ over BLE.
 OpenRouter API  <---  daemon (Windows)  --- BLE --->  ORmeter (ESP32-S3)
 ```
 
-| Normal | Near the limit |
-|---|---|
-| <img src="docs/images/meter.png" width="230" alt="ORmeter showing the wallet balance, monthly limit and battery"> | <img src="docs/images/meter-alarm.png" width="230" alt="ORmeter with a red border warning that the wallet is nearly empty"> |
+<p>
+  <img src="docs/images/meter.png" width="230" alt="ORmeter: wallet balance and monthly limit">
+  &nbsp;&nbsp;
+  <img src="docs/images/meter-alarm.png" width="230" alt="ORmeter: low budget alarm">
+</p>
 
-*The wallet figure is the hero; the two bars track the balance remaining and the
-spend against the key's limit. When either nears exhaustion -- 5% left in the
-wallet, or 95% of the limit used -- the whole panel picks up a red frame.*
+*Left, normal. Right, the **low budget alarm**: the whole panel picks up a red
+frame when the wallet has 5% or less left, or 95% of the key's limit is spent.*
 
 ## What you need
 
