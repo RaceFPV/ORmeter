@@ -118,6 +118,12 @@ Logs are at `%LOCALAPPDATA%\ORmeter\meter.log`.
   balance remaining.
 - **Monthly limit** — spend against your key's spend limit, shown as a percentage
   *and* the actual dollars, so the number says what it is a percentage of.
+- **Battery** — top right, and drawn only when the AXP2101 reports a cell
+  attached. The board runs fine on USB alone, so no indicator means no battery,
+  not a fault.
+- **Red border** — the whole screen picks up a red frame when the wallet has 5%
+  or less left, or the spend limit is 95% or more consumed. Deliberately
+  unmissable, and unlike any normal reading.
 
 ## Repository layout
 
