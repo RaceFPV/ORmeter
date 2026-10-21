@@ -12,22 +12,16 @@ over BLE.
 OpenRouter API  <---  daemon (Windows)  --- BLE --->  ORmeter (ESP32-S3)
 ```
 
-<p>
-  <img src="docs/images/meter.png" width="230" alt="ORmeter: wallet balance and monthly limit">
-  &nbsp;&nbsp;
-  <img src="docs/images/meter-alarm.png" width="230" alt="ORmeter: low budget alarm">
-</p>
-
-*Left, normal. Right, the **low budget alarm**: the whole panel picks up a red
-frame when the wallet has 5% or less left, or 95% of the key's limit is spent.*
+<img src="docs/images/meter.png" width="230" alt="ORmeter showing the wallet balance and monthly limit">
 
 ## What you need
 
-| | |
-|---|---|
-| **Display** | A **Waveshare ESP32-S3-Touch-AMOLED-1.8** — 368×448 AMOLED panel, FT3168 touch, AXP2101 PMU, 16 MB flash. |
-| **Host** | A native **Windows** machine with Python 3.10+. WSL cannot act as the host: the BLE link goes through WinRT, and WSL2 ships no Bluetooth stack at all. |
-| **Account** | An [OpenRouter](https://openrouter.ai) API key. Set a spend limit on that key — the meter's "monthly limit" row has nothing to measure without one. |
+- A **Waveshare ESP32-S3-Touch-AMOLED-1.8** — 368×448 AMOLED, FT3168 touch,
+  AXP2101 PMU, 16 MB flash.
+- A native **Windows** machine with **Python 3.10+**. WSL cannot be the host: the
+  BLE link goes through WinRT, and WSL2 ships no Bluetooth stack at all.
+- An **OpenRouter API key** — and set a **spend limit on that key**. The meter's
+  monthly-limit row has nothing to measure without one.
 
 This project supports exactly that one board. It does not attempt to support
 others.
