@@ -67,6 +67,7 @@
 #include <lvgl.h>
 
 extern "C" {
+extern const lv_font_t font_inter_14;
 extern const lv_font_t font_inter_16;
 extern const lv_font_t font_inter_20;
 extern const lv_font_t font_inter_32;
@@ -130,6 +131,19 @@ extern const lv_font_t font_inter_72;
 #define CONTENT_W (LCD_WIDTH - 2 * MARGIN)
 #define BAR_H 16          // thick enough to read at a glance across a desk
 
+// Battery indicator geometry, and the width reserved for its percentage text.
+// Reserving a fixed width keeps the icon's position stable as the reading
+// changes ("9%" vs "100%") without needing a flex layout.
+#define BATT_W 26
+#define BATT_H 13
+#define BATT_PAD 2
+#define BATT_TEXT_W 40
+
+// Warn when the wallet is nearly gone or the limit is nearly consumed.
+#define ALARM_WALLET_PCT 5      // wallet remaining at or below this
+#define ALARM_SPEND_PCT 95      // spend consumed at or above this
+#define ALARM_BORDER_W 6
+
 // --- HID report descriptor -------------------------------------------------
 // Standard 6-key-rollover boot-protocol keyboard from the USB HID Usage Tables:
 // modifier byte, reserved byte, six key codes in; a 5-bit LED report out. The
@@ -166,6 +180,10 @@ static lv_obj_t *lbl_limit_amt = nullptr;    // "$5.25 of $50"
 static lv_obj_t *lbl_spend_pct = nullptr;    // "11% used"
 static lv_obj_t *bar_spend = nullptr;
 static lv_obj_t *lbl_banner = nullptr;       // hold-to-pair + pairing mode
+static lv_obj_t *batt_body = nullptr;        // battery outline
+static lv_obj_t *batt_fill = nullptr;        // battery level fill
+static lv_obj_t *batt_nub = nullptr;         // battery terminal
+static lv_obj_t *lbl_batt = nullptr;         // battery percentage
 
 static volatile bool g_have_data = false;
 static bool g_pairing = false;
@@ -414,19 +432,109 @@ static void boot_btn_tick() {
     was_pressed = pressed;
 }
 
+// --- battery indicator -----------------------------------------------------
+// Drawn from primitives rather than an icon glyph, so it does not depend on any
+// symbol font being compiled in.
+static uint32_t battery_color(int pct) {
+    if (pct <= 15) return COL_HOT;
+    if (pct <= 35) return COL_WARN;
+    return COL_ACCENT;
+}
+
+static void battery_build(lv_obj_t *parent) {
+    batt_body = lv_obj_create(parent);
+    lv_obj_set_size(batt_body, BATT_W, BATT_H);
+    lv_obj_set_style_radius(batt_body, 3, 0);
+    lv_obj_set_style_border_width(batt_body, 2, 0);
+    lv_obj_set_style_border_color(batt_body, lv_color_hex(COL_DIM), 0);
+    lv_obj_set_style_bg_opa(batt_body, LV_OPA_TRANSP, 0);
+    lv_obj_set_style_pad_all(batt_body, 0, 0);
+    lv_obj_clear_flag(batt_body, LV_OBJ_FLAG_SCROLLABLE);
+
+    batt_fill = lv_obj_create(batt_body);
+    lv_obj_set_height(batt_fill, BATT_H - 2 * BATT_PAD - 4);
+    lv_obj_set_width(batt_fill, 0);
+    lv_obj_align(batt_fill, LV_ALIGN_LEFT_MID, 0, 0);
+    lv_obj_set_style_radius(batt_fill, 1, 0);
+    lv_obj_set_style_border_width(batt_fill, 0, 0);
+    lv_obj_set_style_bg_color(batt_fill, lv_color_hex(COL_ACCENT), 0);
+    lv_obj_set_style_bg_opa(batt_fill, LV_OPA_COVER, 0);
+    lv_obj_clear_flag(batt_fill, LV_OBJ_FLAG_SCROLLABLE);
+
+    // Terminal nub, offset so it sits against the body's right edge.
+    batt_nub = lv_obj_create(parent);
+    lv_obj_set_size(batt_nub, 3, 6);
+    lv_obj_set_style_radius(batt_nub, 1, 0);
+    lv_obj_set_style_bg_color(batt_nub, lv_color_hex(COL_DIM), 0);
+    lv_obj_set_style_border_width(batt_nub, 0, 0);
+    lv_obj_clear_flag(batt_nub, LV_OBJ_FLAG_SCROLLABLE);
+
+    lbl_batt = make_label(parent, &font_inter_14, COL_TEXT, "--%");
+    lv_obj_set_width(lbl_batt, BATT_TEXT_W);
+    lv_obj_set_style_text_align(lbl_batt, LV_TEXT_ALIGN_RIGHT, 0);
+}
+
+// PMU reads are cheap but pointless at 10Hz, so throttle them. Hides the whole
+// indicator when no cell is attached -- this board runs fine on USB alone, and a
+// permanent "0%" would read as a fault rather than an absence.
+static void battery_tick() {
+    static uint32_t last = 0;
+    if (millis() - last < 10000) return;
+    last = millis();
+
+    if (!g_pmu.isBatteryConnect()) {
+        lv_obj_add_flag(batt_body, LV_OBJ_FLAG_HIDDEN);
+        lv_obj_add_flag(batt_fill, LV_OBJ_FLAG_HIDDEN);
+        lv_obj_add_flag(batt_nub, LV_OBJ_FLAG_HIDDEN);
+        lv_obj_add_flag(lbl_batt, LV_OBJ_FLAG_HIDDEN);
+        return;
+    }
+
+    lv_obj_clear_flag(batt_body, LV_OBJ_FLAG_HIDDEN);
+    lv_obj_clear_flag(batt_fill, LV_OBJ_FLAG_HIDDEN);
+    lv_obj_clear_flag(batt_nub, LV_OBJ_FLAG_HIDDEN);
+    lv_obj_clear_flag(lbl_batt, LV_OBJ_FLAG_HIDDEN);
+
+    int pct = (int)g_pmu.getBatteryPercent();
+    if (pct < 0) pct = 0;
+    if (pct > 100) pct = 100;
+
+    char buf[8];
+    snprintf(buf, sizeof(buf), "%d%%", pct);
+    lv_label_set_text(lbl_batt, buf);
+
+    const int inner_max = BATT_W - 2 * BATT_PAD - 4;
+    lv_obj_set_width(batt_fill, (inner_max * pct) / 100);
+    lv_obj_set_style_bg_color(batt_fill, lv_color_hex(battery_color(pct)), 0);
+}
+
 // --- UI (money first) ------------------------------------------------------
 static void ui_build() {
     lv_obj_t *scr = lv_screen_active();
     lv_obj_set_style_bg_color(scr, lv_color_hex(COL_BG), 0);
     lv_obj_set_style_pad_all(scr, 0, 0);
 
-    // ---- masthead: what this thing is
+    // ---- masthead: brand left, tagline centred, battery right
     lv_obj_t *lbl_brand = make_label(scr, &font_inter_20, COL_TEXT, "ORmeter");
     lv_obj_set_style_text_letter_space(lbl_brand, 1, 0);
     lv_obj_align(lbl_brand, LV_ALIGN_TOP_LEFT, MARGIN, 18);
 
-    lv_obj_t *lbl_tag = make_label(scr, &font_inter_16, COL_DIM, "OpenRouter tracking");
-    lv_obj_align(lbl_tag, LV_ALIGN_TOP_RIGHT, -MARGIN, 22);
+    // 14px, not 16: with three items on one 368px row the tagline has to give a
+    // little width so it cannot meet either neighbour.
+    lv_obj_t *lbl_tag = make_label(scr, &font_inter_14, COL_DIM, "OpenRouter tracking");
+    lv_obj_align(lbl_tag, LV_ALIGN_TOP_MID, 0, 23);
+
+    // Right-hand group, laid out from the right edge inwards. The percentage
+    // occupies a fixed width so the icon never shifts as the reading changes.
+    lbl_batt = nullptr;  // created by battery_build()
+    battery_build(scr);
+    lv_obj_align(lbl_batt, LV_ALIGN_TOP_RIGHT, -MARGIN, 20);
+    lv_obj_align(batt_nub, LV_ALIGN_TOP_RIGHT, -(MARGIN + BATT_TEXT_W + 5), 24);
+    lv_obj_align(batt_body, LV_ALIGN_TOP_RIGHT, -(MARGIN + BATT_TEXT_W + 8 + BATT_W), 20);
+    lv_obj_add_flag(batt_body, LV_OBJ_FLAG_HIDDEN);   // until the PMU is read
+    lv_obj_add_flag(batt_fill, LV_OBJ_FLAG_HIDDEN);
+    lv_obj_add_flag(batt_nub, LV_OBJ_FLAG_HIDDEN);
+    lv_obj_add_flag(lbl_batt, LV_OBJ_FLAG_HIDDEN);
 
     // ---- WALLET: the hero
     lbl_wallet_cap = make_caps(scr, "WALLET");
@@ -519,6 +627,17 @@ static bool apply_payload(const char *json, size_t len) {
 
     lv_bar_set_value(bar_spend, s, LV_ANIM_OFF);
     lv_obj_set_style_bg_color(bar_spend, lv_color_hex(severity_color(s)), LV_PART_INDICATOR);
+
+    // Loud, unmissable, and impossible to confuse with a data reading: a red
+    // frame around the whole panel when either figure is nearly exhausted.
+    const bool alarm = (tp <= ALARM_WALLET_PCT) || (s >= ALARM_SPEND_PCT);
+    lv_obj_t *scr = lv_screen_active();
+    lv_obj_set_style_border_color(scr, lv_color_hex(COL_HOT), 0);
+    lv_obj_set_style_border_opa(scr, alarm ? LV_OPA_COVER : LV_OPA_TRANSP, 0);
+    lv_obj_set_style_border_width(scr, alarm ? ALARM_BORDER_W : 0, 0);
+    lv_obj_set_style_radius(scr, 0, 0);
+    Serial.printf("alarm: wallet %d%% remaining, spend %d%% used -> border %s\n",
+                  tp, s, alarm ? "ON" : "off");
 
     g_have_data = true;
     Serial.printf("payload: s=%d tp=%d sr=%d rd=\"%s\" limit=%.2f used=%.2f\n",
@@ -708,6 +827,7 @@ void loop() {
     lv_timer_handler();
     touch_poll();
     boot_btn_tick();
+    battery_tick();
 
     if (g_need_advertise && (int32_t)(millis() - g_advertise_at) >= 0) {
         g_need_advertise = false;
