@@ -1,0 +1,8 @@
+# ORmeter host daemon -- Windows dependencies.
+#
+# Deliberately unpinned: this is a small, stable dependency set and the daemon
+# ships as source. Pin these only if a released installer needs reproducibility.
+bleak
+httpx
+pystray
+Pillow

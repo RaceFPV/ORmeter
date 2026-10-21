@@ -1,0 +1,20 @@
+# ORmeter daemon configuration.
+#
+# Lives at %LOCALAPPDATA%\ORmeter\config and is re-read on every poll, so edits
+# take effect within about a minute with no restart.
+
+# What the WALLET bar is measured against.
+#
+# Unset, the bar reads as a share of your TOTAL PURCHASED CREDITS -- "how much of
+# what I bought is left". That denominator is a trap: it grows with every top-up,
+# so the reading drifts toward 0% for good and eventually says "top up now" right
+# after you topped up.
+#
+# Set it to a number you actually think in -- typically your usual top-up -- for a
+# denominator that holds still. Roughly 100% right after a top-up, declining as
+# you spend, and clamped at 100% if you overshoot.
+wallet_reference = 25
+
+# Note: the daemon can also emit `chime` and `clock` fields in the payload. The
+# current firmware does not render either, so they are not documented here as
+# options; leaving them out keeps this file honest.
